@@ -4,7 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MazzaMi - Discoveries</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1D3557',   // Dark Blue (Headers, Text)
+                        secondary: '#457B9D', // Medium Blue (Buttons, Icons)
+                        accent: '#E63946',    // Red (Favorites, Alerts)
+                        light: '#A8DADC',     // Light Blue (Borders, Highlights)
+                        offwhite: '#F1FAEE',  // Off-White (Backgrounds)
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <script type="module">
@@ -14,21 +35,10 @@
         import { getFirestore, collection, query, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Global Firebase Configuration and Utility ---
-
-        // *******************************************************************
-        // * ACTION REQUIRED: INSERT YOUR FIREBASE CONFIGURATION HERE      *
-        // *******************************************************************
-        const YOUR_FIREBASE_CONFIG = {};
-        // *******************************************************************
-
-        // Fallback for environment variables
-        const firebaseConfig = typeof __firebase_config !== 'undefined'
-            ? JSON.parse(__firebase_config)
-            : YOUR_FIREBASE_CONFIG;
-
+        const YOUR_FIREBASE_CONFIG = {}; 
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : YOUR_FIREBASE_CONFIG;
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-travel-app';
-
         const PUBLIC_COLLECTION_PATH = `/artifacts/${appId}/public/data/locations`;
         const generateRandomId = () => `anon-${crypto.randomUUID().substring(0, 8)}`;
         const MOCK_MODE = !firebaseConfig || Object.keys(firebaseConfig).length === 0;
@@ -38,32 +48,29 @@
         let auth = null;
         let currentUserId = MOCK_MODE ? generateRandomId() : null;
         let locations = [];
-        // Updated filter categories: 'all', 'restaurant', 'cafe' (removed 'gem')
         let currentFilter = 'all';
         let currentSearchTerm = '';
-        let currentSort = 'newest'; // 'newest', 'popular'
-        let currentView = 'list'; // 'list', 'detail', or 'profile'
+        let currentSort = 'newest'; 
+        let currentView = 'list'; 
         let selectedLocationId = null;
         
-        // NEW: State to track liked location IDs (Mock data seeded with 'm2')
+        // State to track liked location IDs (Mock data seeded with 'm2')
         let likedLocationIds = new Set(['m2']); 
 
-        // --- Mock Data Setup (Updated: 'gem' locations converted to 'spot' but hidden from UI) ---
+        // --- Mock Data Setup ---
         const MOCK_LOCATIONS = [
-            { id: 'm1', title: 'The Secret Waterfall (Spot)', description: 'A small, secluded cascade only known to locals. Perfect for a summer dip. Coordinates: 40.7128, -74.0060', type: 'spot', imageURL: 'https://placehold.co/400x300/10b981/ffffff?text=Waterfall+Placeholder', submittedBy: 'anon-001', createdAt: new Date().getTime() - 86400000 * 2, clicks: 55, reviews: [{user: 'anon-001', rating: 5, comment: 'Simply stunning!'}, {user: 'anon-002', rating: 4.5, comment: 'A bit hard to find but worth it.'}] },
-            { id: 'm2', title: 'Grandma’s Dumplings', description: 'The absolute best handmade dumplings you will ever taste. Cash only! Coordinates: 34.0522, -118.2437', type: 'restaurant', imageURL: 'https://placehold.co/400x300/f97316/ffffff?text=Dumpling+Image', submittedBy: 'anon-002', createdAt: new Date().getTime() - 86400000, clicks: 120, reviews: [{user: 'anon-001', rating: 5, comment: 'Best dumplings ever!'}, {user: 'anon-003', rating: 5}, {user: 'anon-004', rating: 4}] },
+            { id: 'm1', title: 'The Secret Waterfall (Spot)', description: 'A small, secluded cascade only known to locals. Perfect for a summer dip. Coordinates: 40.7128, -74.0060', type: 'spot', imageURL: 'https://placehold.co/400x300/A8DADC/1D3557?text=Waterfall', submittedBy: 'anon-001', createdAt: new Date().getTime() - 86400000 * 2, clicks: 55, reviews: [{user: 'anon-001', rating: 5, comment: 'Simply stunning!'}, {user: 'anon-002', rating: 4.5, comment: 'A bit hard to find but worth it.'}] },
+            { id: 'm2', title: 'Grandma’s Dumplings', description: 'The absolute best handmade dumplings you will ever taste. Cash only! Coordinates: 34.0522, -118.2437', type: 'restaurant', imageURL: 'https://placehold.co/400x300/E63946/ffffff?text=Dumplings', submittedBy: 'anon-002', createdAt: new Date().getTime() - 86400000, clicks: 120, reviews: [{user: 'anon-001', rating: 5, comment: 'Best dumplings ever!'}, {user: 'anon-003', rating: 5}, {user: 'anon-004', rating: 4}] },
             { id: 'm3', title: 'Sunset Lighthouse View (Spot)', description: 'Take a hike up the hill for a breathtaking sunset view over the coast. Coordinates: 51.5074, 0.1278', type: 'spot', imageURL: '', submittedBy: 'anon-003', createdAt: new Date().getTime(), clicks: 30, reviews: [{user: 'anon-001', rating: 4, comment: 'Nice spot, bit windy.'}] },
             { id: 'm4', title: 'Hidden Noodle Stall', description: 'A small stall with amazing vegetarian noodles. Coordinates: 39.9042, 116.4074', type: 'restaurant', imageURL: '', submittedBy: 'anon-004', createdAt: new Date().getTime() - 86400000 * 3, clicks: 15, reviews: [{user: 'anon-004', rating: 4.5}, {user: 'anon-005', rating: 3}] },
-            { id: 'm5', title: 'Cozy Corner Coffee', description: 'The best latte art in the city. Great for remote work. Coordinates: 42.3601, -71.0589', type: 'cafe', imageURL: 'https://placehold.co/400x300/fbbf24/ffffff?text=Cafe+Interior', submittedBy: 'anon-005', createdAt: new Date().getTime() - 86400000 * 4, clicks: 80, reviews: [{user: 'anon-001', rating: 4.5, comment: 'Great coffee, friendly staff.'}, {user: 'anon-002', rating: 5}] },
+            { id: 'm5', title: 'Cozy Corner Coffee', description: 'The best latte art in the city. Great for remote work. Coordinates: 42.3601, -71.0589', type: 'cafe', imageURL: 'https://placehold.co/400x300/457B9D/ffffff?text=Cafe', submittedBy: 'anon-005', createdAt: new Date().getTime() - 86400000 * 4, clicks: 80, reviews: [{user: 'anon-001', rating: 4.5, comment: 'Great coffee, friendly staff.'}, {user: 'anon-002', rating: 5}] },
         ];
 
-        // --- Mock User Data (Profile Info) ---
         const MOCK_USER_PROFILES = {
-            'anon-001': { nickname: 'Wanderer_1', profilePic: 'https://placehold.co/100x100/1e40af/ffffff?text=W1', subscribersCount: 1542, subscribesCount: 289, placeFollowsCount: 45 },
-            'anon-002': { nickname: 'Foodie_2', profilePic: 'https://placehold.co/100x100/dc2626/ffffff?text=F2', subscribersCount: 890, subscribesCount: 123, placeFollowsCount: 22 },
-            'anon-003': { nickname: 'SpotFinder', profilePic: 'https://placehold.co/100x100/059669/ffffff?text=SF', subscribersCount: 300, subscribesCount: 50, placeFollowsCount: 10 },
-            // Fallback for new users
-            default: { nickname: 'NewExplorer', profilePic: 'https://placehold.co/100x100/6b7280/ffffff?text=ME', subscribersCount: 15, subscribesCount: 5, placeFollowsCount: 1 },
+            'anon-001': { nickname: 'Wanderer_1', profilePic: 'https://placehold.co/100x100/1D3557/ffffff?text=W1', subscribersCount: 1542, subscribesCount: 289, placeFollowsCount: 45 },
+            'anon-002': { nickname: 'Foodie_2', profilePic: 'https://placehold.co/100x100/E63946/ffffff?text=F2', subscribersCount: 890, subscribesCount: 123, placeFollowsCount: 22 },
+            'anon-003': { nickname: 'SpotFinder', profilePic: 'https://placehold.co/100x100/457B9D/ffffff?text=SF', subscribersCount: 300, subscribesCount: 50, placeFollowsCount: 10 },
+            default: { nickname: 'NewExplorer', profilePic: 'https://placehold.co/100x100/A8DADC/1D3557?text=ME', subscribersCount: 15, subscribesCount: 5, placeFollowsCount: 1 },
         };
 
         // --- DOM Elements ---
@@ -92,12 +99,13 @@
             const el = document.getElementById(elementId);
             if (el) {
                 el.textContent = message;
-                el.className = isError ? 'text-red-600 font-medium p-2 bg-red-100 rounded' : 'text-emerald-600 font-medium p-2 bg-emerald-100 rounded';
+                el.className = isError 
+                    ? 'text-accent font-bold p-2 bg-red-100 rounded border border-accent' 
+                    : 'text-secondary font-bold p-2 bg-blue-50 rounded border border-secondary';
                 setTimeout(() => el.textContent = '', 5000);
             }
         };
 
-        // NEW: Function to handle Liking a place
         const toggleLike = (locationId) => {
             if (likedLocationIds.has(locationId)) {
                 likedLocationIds.delete(locationId);
@@ -107,7 +115,6 @@
                 showMessage('like-status', 'Added to Favorites');
             }
             
-            // Re-render current view to reflect changes
             if (currentView === 'detail') {
                 renderDetailView(locationId);
             } else if (currentView === 'profile') {
@@ -115,34 +122,32 @@
             }
         };
 
-        // New function to handle metric clicks and show a mock list
         const showMockList = (metricType) => {
             let title = '';
             let listItems = [];
 
-            // Mock data generation for the modal
             if (metricType === 'subscribers') {
                 title = 'Followers of Your Profile';
                 listItems = ['AnyaSharma', 'TechGuru_78', 'FoodLover_NY', 'TravelBug_99'].map(name =>
-                    `<div class="p-2 border-b border-gray-100 flex items-center space-x-2"><i data-lucide="user" class="w-4 h-4 text-emerald-600"></i><span class="font-medium">${name}</span></div>`
+                    `<div class="p-2 border-b border-light flex items-center space-x-2"><i data-lucide="user" class="w-4 h-4 text-accent"></i><span class="font-medium text-primary">${name}</span></div>`
                 );
             } else if (metricType === 'subscribes') {
                 title = 'Users You Are Subscribed To';
                 listItems = ['JaneDoe', 'BestCafes', 'HiddenSpots_LA'].map(name =>
-                    `<div class="p-2 border-b border-gray-100 flex items-center space-x-2"><i data-lucide="user-plus" class="w-4 h-4 text-sky-600"></i><span class="font-medium">${name}</span></div>`
+                    `<div class="p-2 border-b border-light flex items-center space-x-2"><i data-lucide="user-plus" class="w-4 h-4 text-secondary"></i><span class="font-medium text-primary">${name}</span></div>`
                 );
             } else if (metricType === 'place-follows') {
                 title = 'Places/Locations You Follow';
                 listItems = ['Central Park NYC', 'Tokyo Tower', 'The Grand Canyon', 'Cozy Corner Coffee'].map(name =>
-                    `<div class="p-2 border-b border-gray-100 flex items-center space-x-2"><i data-lucide="map-pin" class="w-4 h-4 text-red-600"></i><span class="font-medium">${name}</span></div>`
+                    `<div class="p-2 border-b border-light flex items-center space-x-2"><i data-lucide="map-pin" class="w-4 h-4 text-primary"></i><span class="font-medium text-primary">${name}</span></div>`
                 );
             }
 
             modalContent.innerHTML = `
-                <h3 class="text-2xl font-bold mb-4 border-b pb-2 text-gray-800">${title}</h3>
+                <h3 class="text-2xl font-bold mb-4 border-b border-light pb-2 text-primary">${title}</h3>
                 <div class="space-y-1 max-h-80 overflow-y-auto">
                     ${listItems.join('')}
-                    <p class="pt-2 text-sm text-gray-500 italic">Showing mock data only.</p>
+                    <p class="pt-2 text-sm text-secondary italic">Showing mock data only.</p>
                 </div>
             `;
             lucide.createIcons();
@@ -162,8 +167,7 @@
         const calculatePopularity = (location) => {
             const avgRating = location.reviews && location.reviews.length > 0
                 ? location.reviews.reduce((sum, r) => sum + r.rating, 0) / location.reviews.length
-                : 3.0; // Default rating if none
-
+                : 3.0; 
             return Math.max(0, (0.7 * (location.clicks || 0)) + (0.3 * (avgRating * 20)));
         };
 
@@ -175,7 +179,6 @@
             detailView.classList.toggle('hidden', view !== 'detail');
             profileView.classList.toggle('hidden', view !== 'profile');
 
-            // Show/hide relevant controls
             const isListView = view === 'list';
             searchInput.closest('.relative').classList.toggle('hidden', !isListView);
             document.getElementById('list-controls').classList.toggle('hidden', !isListView);
@@ -188,7 +191,7 @@
             } else if (view === 'profile') {
                 renderProfileView();
             }
-            window.scrollTo(0, 0); // Scroll to top on view switch
+            window.scrollTo(0, 0); 
         };
 
         const handleReviewSubmission = async (e) => {
@@ -223,24 +226,18 @@
                     if (!locations[locationIndex].reviews) {
                         locations[locationIndex].reviews = [];
                     }
-
                     const existingReviewIndex = locations[locationIndex].reviews.findIndex(r => r.user === currentUserId);
                     if (existingReviewIndex !== -1) {
                         locations[locationIndex].reviews[existingReviewIndex] = newReview;
-                        showMessage('review-status', 'Review updated in local memory (Mock Mode)!');
+                        showMessage('review-status', 'Review updated locally!');
                     } else {
                          locations[locationIndex].reviews.unshift(newReview);
-                        showMessage('review-status', 'Review added in local memory (Mock Mode)!');
+                        showMessage('review-status', 'Review added locally!');
                     }
-                } else {
-                    showMessage('review-status', 'Error: Location not found.', true);
                 }
-
-                // Re-render to show the new review and updated rating immediately
                 renderDetailView(locationId);
             } else {
-                console.warn("Review submission in Live Mode requires Firestore array update logic.");
-                showMessage('review-status', 'Review submitted! (Requires complex backend logic in Live Mode)', false);
+                showMessage('review-status', 'Review submitted! (Mock display only)', false);
             }
 
             commentInput.value = '';
@@ -252,25 +249,23 @@
         // --- Rendering Functions ---
 
         const createLocationCard = (location) => {
-            const type = location.type || 'spot'; // Defaulting to 'spot' for internal consistency
+            const type = location.type || 'spot'; 
             let iconName = 'compass';
             let typeLabel = 'Discovery';
-            let colorClass = 'bg-gray-100 text-gray-800 border-gray-300'; // Default gray for 'spot'
+            let colorClass = 'bg-white text-primary border-light'; 
 
-            // UI Only shows Restaurant and Cafe. Spots are filtered out or displayed generically.
             if (type === 'restaurant') {
                 iconName = 'chef-hat';
                 typeLabel = 'Restaurant';
-                colorClass = 'bg-orange-100 text-orange-800 border-orange-300';
+                colorClass = 'bg-white text-primary border-orange-200 border-l-4 border-l-orange-500';
             } else if (type === 'cafe') {
                 iconName = 'coffee';
                 typeLabel = 'Cafe';
-                colorClass = 'bg-yellow-100 text-yellow-800 border-yellow-300';
+                colorClass = 'bg-white text-primary border-yellow-200 border-l-4 border-l-yellow-500';
             } else {
-                 // For 'spot' or any other type not explicitly requested to be shown as a filter
                  iconName = 'globe';
-                 typeLabel = 'General Spot';
-                 colorClass = 'bg-blue-100 text-blue-800 border-blue-300';
+                 typeLabel = 'Spot';
+                 colorClass = 'bg-white text-primary border-light border-l-4 border-l-secondary';
             }
 
             const submittedByLabel = location.submittedBy === currentUserId ? 'You' : location.submittedBy;
@@ -281,33 +276,33 @@
 
             const imageHtml = location.imageURL ? `
                 <img src="${location.imageURL}"
-                     onerror="this.onerror=null;this.src='https://placehold.co/400x300/aaaaaa/ffffff?text=Image+Error'"
+                     onerror="this.onerror=null;this.src='https://placehold.co/400x300/A8DADC/1D3557?text=No+Image'"
                      alt="${location.title}"
                      class="w-full h-32 object-cover rounded-t-xl mb-3"
                 />` : '';
 
 
             return `
-                <div data-id="${location.id}" class="location-card rounded-xl shadow-lg border-2 transition duration-300 hover:shadow-2xl hover:scale-[1.01] ${colorClass} cursor-pointer">
+                <div data-id="${location.id}" class="location-card rounded-xl shadow-md border transition duration-300 hover:shadow-xl hover:scale-[1.01] ${colorClass} cursor-pointer">
                     ${imageHtml}
                     <div class="p-4">
                         <div class="flex items-start justify-between mb-2">
                             <div class="flex items-center space-x-2">
-                                <i data-lucide="${iconName}" class="w-5 h-5"></i>
-                                <h3 class="text-xl font-bold">${location.title}</h3>
+                                <i data-lucide="${iconName}" class="w-5 h-5 text-secondary"></i>
+                                <h3 class="text-xl font-bold text-primary">${location.title}</h3>
                             </div>
-                            <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-white/80 border border-current mt-1">
+                            <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-offwhite border border-light text-secondary mt-1">
                                 ${typeLabel}
                             </span>
                         </div>
                         <p class="text-sm text-gray-600 mb-3 line-clamp-2">${location.description}</p>
 
-                        <div class="flex items-center text-xs text-gray-500 italic mt-2 justify-end border-t pt-2 border-gray-300/50">
-                            <p>Submitted by: ${submittedByLabel}</p>
-                            <div class="flex items-center space-x-3 font-semibold text-gray-700 ml-4">
+                        <div class="flex items-center text-xs text-gray-500 italic mt-2 justify-end border-t border-light pt-2">
+                            <p>By: ${submittedByLabel}</p>
+                            <div class="flex items-center space-x-3 font-semibold text-primary ml-4">
                                 <p class="flex items-center space-x-1">
                                     <i data-lucide="star" class="w-3 h-3 text-yellow-500 fill-yellow-500"></i>
-                                    <span>${avgRating} (${numReviews} Reviews)</span>
+                                    <span>${avgRating} (${numReviews})</span>
                                 </p>
                             </div>
                         </div>
@@ -325,10 +320,6 @@
 
             if (MOCK_MODE) {
                 location.clicks = (location.clicks || 0) + 1;
-                const index = locations.findIndex(loc => loc.id === id);
-                if (index !== -1) {
-                    locations[index] = location;
-                }
             }
 
             const coordMatch = location.description.match(/Coordinates: ([\d.-]+), ([\d.-]+)/);
@@ -340,52 +331,46 @@
                 : 'N/A';
             const detailContent = document.getElementById('detail-content');
 
-            // Determine type labels and icons (Simplified UI for restaurant/cafe)
             const type = location.type || 'spot';
             let iconName = 'globe';
             let typeLabel = 'Discovery';
-            let colorClass = 'bg-blue-100 text-blue-700';
             if (type === 'restaurant') {
                 iconName = 'chef-hat';
                 typeLabel = 'Restaurant';
-                colorClass = 'bg-orange-100 text-orange-700';
             } else if (type === 'cafe') {
                 iconName = 'coffee';
                 typeLabel = 'Cafe';
-                colorClass = 'bg-yellow-100 text-yellow-700';
             }
 
-
             const imageBanner = location.imageURL ? `
-                <img src="${location.imageURL}" onerror="this.onerror=null;this.src='https://placehold.co/1000x300/aaaaaa/ffffff?text=Image+Not+Available'" alt="${location.title}" class="w-full h-64 object-cover rounded-xl shadow-lg mb-8 border-4 border-white" />` : '';
+                <img src="${location.imageURL}" onerror="this.onerror=null;this.src='https://placehold.co/1000x300/A8DADC/1D3557?text=No+Image'" alt="${location.title}" class="w-full h-64 object-cover rounded-xl shadow-lg mb-8 border-4 border-white" />` : '';
             
             const mapIframe = `<iframe title="Location Map" width="100%" height="300" loading="lazy" allowfullscreen frameborder="0" style="border:0; border-radius: 0.75rem;" src="https://maps.google.com/maps?q=${lat},${lon}&hl=en&z=14&output=embed"></iframe>`;
 
-            // Reviews List (No change, as user can submit and see changes instantly)
             const reviewsHtml = location.reviews && location.reviews.length > 0 ?
                 location.reviews.map(r => {
                     const reviewerInfo = MOCK_USER_PROFILES[r.user] || MOCK_USER_PROFILES.default;
                     const isCurrentUser = r.user === currentUserId;
                     return `
-                    <div class="p-3 bg-gray-50 rounded-lg flex justify-between items-center">
+                    <div class="p-3 bg-offwhite rounded-lg flex justify-between items-center border border-light">
                         <div class="flex items-center space-x-2">
                              <img src="${reviewerInfo.profilePic}" alt="Profile" class="w-6 h-6 rounded-full object-cover">
-                            <p class="font-medium text-sm text-gray-800">${reviewerInfo.nickname} ${isCurrentUser ? '(You)' : ''}</p>
+                            <p class="font-medium text-sm text-primary">${reviewerInfo.nickname} ${isCurrentUser ? '(You)' : ''}</p>
                         </div>
                         <span class="flex items-center space-x-1 font-semibold text-yellow-600">
                             <i data-lucide="star" class="w-4 h-4 fill-yellow-600"></i>
                             <span>${r.rating} / 5</span>
                         </span>
                     </div>
-                    ${r.comment ? `<p class="text-xs text-gray-600 pl-8 pt-1 italic">${r.comment}</p>` : ''}
+                    ${r.comment ? `<p class="text-xs text-secondary pl-8 pt-1 italic">${r.comment}</p>` : ''}
                 `;}).join('')
-                : '<p class="text-gray-500 italic p-3">No reviews yet. Share your experience!</p>';
+                : '<p class="text-secondary italic p-3">No reviews yet. Share your experience!</p>';
 
             const reviewFormHtml = `
                 <form id="review-form" class="space-y-4">
                     <div class="flex items-center space-x-4">
-                        <label for="review-rating" class="text-sm font-medium text-gray-700">Your Rating:</label>
-                        <select id="review-rating" required class="p-2 border rounded-lg shadow-sm">
+                        <label for="review-rating" class="text-sm font-medium text-primary">Your Rating:</label>
+                        <select id="review-rating" required class="p-2 border border-light rounded-lg shadow-sm focus:ring-secondary focus:border-secondary">
                             <option value="5">5 Stars - Amazing</option>
                             <option value="4">4 Stars - Great</option>
                             <option value="3">3 Stars - Good</option>
@@ -394,43 +379,44 @@
                         </select>
                     </div>
                     <div>
-                        <label for="review-comment" class="block text-sm font-medium text-gray-700">Comment (Optional)</label>
-                        <textarea id="review-comment" rows="2" placeholder="Tell us what you liked..." class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-3 focus:border-emerald-500 focus:ring-emerald-500"></textarea>
+                        <textarea id="review-comment" rows="2" placeholder="Tell us what you liked..." class="mt-1 block w-full rounded-lg border-light shadow-sm p-3 focus:border-secondary focus:ring-secondary"></textarea>
                     </div>
                     <div id="review-status" class="text-center text-sm"></div>
-                    <button type="submit" id="submit-review-button" class="w-full flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-xl shadow-md text-white bg-emerald-600 hover:bg-emerald-700 transition duration-150">
+                    <button type="submit" id="submit-review-button" class="w-full flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-xl shadow-md text-white bg-secondary hover:bg-primary transition duration-150">
                         <i data-lucide="message-square" class="w-5 h-5 mr-2"></i> Post Review
                     </button>
                 </form>
             `;
             
-            // --- NEW LIKE BUTTON LOGIC ---
+            // LIKE BUTTON LOGIC
             const isLiked = likedLocationIds.has(location.id);
-            const likeButtonColor = isLiked ? 'text-red-500 fill-red-500' : 'text-gray-400';
+            // Use the new Accent color for the heart
+            const likeButtonIconClass = isLiked ? 'text-accent fill-accent' : 'text-gray-300';
             const likeButtonText = isLiked ? 'Saved to Favorites' : 'Add to Favorites';
+            const likeButtonBorder = isLiked ? 'border-accent' : 'border-light';
 
             detailContent.innerHTML = `
                 ${imageBanner}
                 
                 <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
-                    <h2 class="text-3xl font-extrabold text-emerald-700">${location.title}</h2>
-                    <button id="like-button" class="mt-2 md:mt-0 flex items-center space-x-2 px-4 py-2 rounded-full border hover:bg-gray-50 transition duration-150 shadow-sm bg-white">
-                        <i data-lucide="heart" class="w-6 h-6 ${likeButtonColor} transition-colors duration-300"></i>
-                        <span class="font-medium text-gray-700">${likeButtonText}</span>
+                    <h2 class="text-3xl font-extrabold text-primary">${location.title}</h2>
+                    <button id="like-button" class="mt-2 md:mt-0 flex items-center space-x-2 px-4 py-2 rounded-full border ${likeButtonBorder} hover:bg-offwhite transition duration-150 shadow-sm bg-white">
+                        <i data-lucide="heart" class="w-6 h-6 ${likeButtonIconClass} transition-colors duration-300"></i>
+                        <span class="font-medium text-primary">${likeButtonText}</span>
                     </button>
                 </div>
                 <div id="like-status" class="text-right text-sm font-medium h-6 mb-2"></div>
 
-                <div class="flex flex-wrap items-center gap-4 text-lg text-gray-600 mb-8 border-b pb-4">
-                    <span class="flex items-center space-x-1 text-sm font-semibold p-2 rounded-full ${colorClass}">
+                <div class="flex flex-wrap items-center gap-4 text-lg text-secondary mb-8 border-b border-light pb-4">
+                    <span class="flex items-center space-x-1 text-sm font-semibold p-2 rounded-full bg-offwhite text-secondary border border-light">
                         <i data-lucide="${iconName}" class="w-5 h-5"></i>
                         <span>${typeLabel}</span>
                     </span>
-                    <span class="flex items-center space-x-1 font-semibold text-yellow-700">
+                    <span class="flex items-center space-x-1 font-semibold text-yellow-600">
                         <i data-lucide="star" class="w-5 h-5 fill-yellow-500 text-yellow-500"></i>
                         <span class="text-xl">${avgRating} / 5 Rating</span>
                     </span>
-                    <span class="flex items-center space-x-1 text-sm text-gray-500">
+                    <span class="flex items-center space-x-1 text-sm text-secondary">
                         <i data-lucide="user" class="w-4 h-4"></i>
                         <span>Submitted by: ${location.submittedBy === currentUserId ? 'You' : location.submittedBy}</span>
                     </span>
@@ -438,24 +424,24 @@
 
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div class="lg:col-span-2 space-y-8">
-                        <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-                            <h3 class="text-xl font-bold mb-3 border-b pb-2 text-gray-800">Description</h3>
-                            <p class="text-gray-700">${location.description}</p>
+                        <div class="bg-white p-6 rounded-xl shadow-lg border border-light">
+                            <h3 class="text-xl font-bold mb-3 border-b border-light pb-2 text-primary">Description</h3>
+                            <p class="text-primary">${location.description}</p>
                         </div>
-                        <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-                            <h3 class="text-xl font-bold mb-4 border-b pb-2 text-gray-800">Community Reviews (${numReviews})</h3>
+                        <div class="bg-white p-6 rounded-xl shadow-lg border border-light">
+                            <h3 class="text-xl font-bold mb-4 border-b border-light pb-2 text-primary">Community Reviews (${numReviews})</h3>
                             <div class="space-y-3 max-h-80 overflow-y-auto pr-2">${reviewsHtml}</div>
-                            <div class="mt-6 border-t pt-4">
-                                <h4 class="font-bold mb-2 text-gray-800">Leave Your Review</h4>
+                            <div class="mt-6 border-t border-light pt-4">
+                                <h4 class="font-bold mb-2 text-primary">Leave Your Review</h4>
                                 ${reviewFormHtml}
                             </div>
                         </div>
                     </div>
                     <div class="lg:col-span-1 space-y-8">
-                         <div class="bg-white p-6 rounded-xl shadow-2xl border border-gray-100 sticky top-24">
-                            <h3 class="text-xl font-bold mb-3 border-b pb-2 text-gray-800">Location Map</h3>
+                         <div class="bg-white p-6 rounded-xl shadow-2xl border border-light sticky top-24">
+                            <h3 class="text-xl font-bold mb-3 border-b border-light pb-2 text-primary">Location Map</h3>
                             ${mapIframe}
-                            <p class="mt-4 text-sm text-gray-600 font-medium">Lat: ${lat}, Lon: ${lon}</p>
+                            <p class="mt-4 text-sm text-secondary font-medium">Lat: ${lat}, Lon: ${lon}</p>
                         </div>
                     </div>
                 </div>
@@ -468,23 +454,21 @@
                 reviewForm.addEventListener('submit', handleReviewSubmission);
             }
 
-            // NEW: Add event listener for the Like button
             const likeBtn = document.getElementById('like-button');
             if(likeBtn) {
                 likeBtn.addEventListener('click', () => toggleLike(location.id));
             }
         };
 
-
-        // Helper function to create the metric cards (now clickable)
         const createMetricCard = (iconName, title, value, colorClass, metricType) => {
+            // We keep the border colors distinct for semantics, but map the text to our palette
             return `
                 <div data-metric-type="${metricType}"
                      class="metric-card p-4 bg-white rounded-xl shadow-md border-b-4 ${colorClass} flex items-center space-x-4 cursor-pointer hover:shadow-xl hover:scale-[1.02] transition duration-150">
-                    <i data-lucide="${iconName}" class="w-7 h-7 text-gray-700"></i>
+                    <i data-lucide="${iconName}" class="w-7 h-7 text-secondary"></i>
                     <div class="flex flex-col">
-                        <span class="text-2xl font-bold text-gray-800">${value.toLocaleString()}</span>
-                        <span class="text-sm text-gray-500">${title}</span>
+                        <span class="text-2xl font-bold text-primary">${value.toLocaleString()}</span>
+                        <span class="text-sm text-secondary">${title}</span>
                     </div>
                 </div>
             `;
@@ -494,7 +478,6 @@
             const profileContent = document.getElementById('profile-content');
             const userProfileData = MOCK_USER_PROFILES[currentUserId] || MOCK_USER_PROFILES.default;
 
-            // --- REVIEWS DATA ---
             let userReviews = [];
             locations.forEach(loc => {
                 loc.reviews?.forEach(review => {
@@ -509,80 +492,76 @@
                 });
             });
             userReviews.sort((a, b) => b.createdAt - a.createdAt);
-            const recentReviews = userReviews.slice(0, 5); // Show up to 5 recent reviews
+            const recentReviews = userReviews.slice(0, 5); 
 
-            // --- NEW FAVORITES DATA LOGIC ---
-            // Filter locations based on the 'likedLocationIds' Set
             const favoritePlaces = locations.filter(loc => likedLocationIds.has(loc.id));
 
-            // 1. Generate HTML for Recent Reviews
             const reviewsHtml = recentReviews.length > 0 ?
                 recentReviews.map(r => {
                     let typeIcon = r.type === 'restaurant' ? 'chef-hat' : r.type === 'cafe' ? 'coffee' : 'globe';
-                    let typeColor = r.type === 'restaurant' ? 'text-orange-600' : r.type === 'cafe' ? 'text-yellow-600' : 'text-blue-600';
+                    // Keeping semantic colors for the *icons* of types
+                    let typeColor = r.type === 'restaurant' ? 'text-orange-600' : r.type === 'cafe' ? 'text-yellow-600' : 'text-secondary';
                     return `
-                        <div data-id="${r.locationId}" class="location-card cursor-pointer p-4 bg-white rounded-xl shadow hover:shadow-lg transition duration-150 border-l-4 border-emerald-500 mb-4">
-                            <h4 class="font-bold text-lg text-gray-800 flex justify-between items-center">
-                                <span class="hover:text-emerald-600 transition duration-150">${r.locationTitle}</span>
+                        <div data-id="${r.locationId}" class="location-card cursor-pointer p-4 bg-white rounded-xl shadow hover:shadow-lg transition duration-150 border-l-4 border-secondary mb-4">
+                            <h4 class="font-bold text-lg text-primary flex justify-between items-center">
+                                <span class="hover:text-secondary transition duration-150">${r.locationTitle}</span>
                                 <span class="flex items-center space-x-1 font-semibold text-yellow-600 text-sm">
                                     <i data-lucide="star" class="w-4 h-4 fill-yellow-600"></i>
                                     <span>${r.rating} / 5</span>
                                 </span>
                             </h4>
-                            <p class="text-sm italic text-gray-600 mb-2 flex items-center space-x-1">
+                            <p class="text-sm italic text-gray-500 mb-2 flex items-center space-x-1">
                                 <i data-lucide="${typeIcon}" class="w-4 h-4 ${typeColor}"></i>
                                 <span>Reviewed on: ${new Date(r.createdAt).toLocaleDateString()}</span>
                             </p>
-                            ${r.comment ? `<p class="text-gray-700 mt-1 text-sm">"${r.comment}"</p>` : ''}
+                            ${r.comment ? `<p class="text-primary mt-1 text-sm">"${r.comment}"</p>` : ''}
                         </div>
                     `;
                 }).join('')
-                : '<p class="text-gray-500 italic">No reviews found yet. Start exploring!</p>';
+                : '<p class="text-secondary italic">No reviews found yet. Start exploring!</p>';
 
-            // 2. Generate HTML for Favorites List (Replacing "Most Liked Place")
             const favoritesHtml = favoritePlaces.length > 0 ?
                 favoritePlaces.map(place => {
-                    // Reusing simplified card logic here for the list
                     return `
-                    <div data-id="${place.id}" class="location-card cursor-pointer p-4 bg-white rounded-xl shadow hover:shadow-lg transition duration-150 border-l-4 border-red-500 mb-4">
+                    <div data-id="${place.id}" class="location-card cursor-pointer p-4 bg-white rounded-xl shadow hover:shadow-lg transition duration-150 border-l-4 border-accent mb-4">
                         <div class="flex items-center space-x-3">
-                            <img src="${place.imageURL || 'https://placehold.co/100x100/e5e7eb/a3a3a3?text=No+Img'}" class="w-16 h-16 rounded-lg object-cover">
+                            <img src="${place.imageURL || 'https://placehold.co/100x100/A8DADC/1D3557?text=Img'}" class="w-16 h-16 rounded-lg object-cover">
                             <div>
-                                <h4 class="font-bold text-lg text-gray-800 hover:text-red-600">${place.title}</h4>
-                                 <p class="text-xs text-gray-500">${place.type ? place.type.toUpperCase() : 'SPOT'}</p>
+                                <h4 class="font-bold text-lg text-primary hover:text-accent">${place.title}</h4>
+                                 <p class="text-xs text-secondary">${place.type ? place.type.toUpperCase() : 'SPOT'}</p>
                             </div>
                         </div>
                     </div>`;
                 }).join('') :
-                `<div class="p-4 text-center bg-white rounded-xl shadow-lg border-2 border-dashed border-gray-200">
-                    <p class="text-gray-500 italic">No favorites yet. Click the heart icon on a place you love!</p>
+                `<div class="p-4 text-center bg-white rounded-xl shadow-lg border-2 border-dashed border-light">
+                    <p class="text-secondary italic">No favorites yet. Click the heart icon on a place you love!</p>
                 </div>`;
 
-            // 3. Generate Metrics HTML
+            // Semantic borders for metrics: Subscribers (Accent/Red), Subscribes (Blue/Secondary), Places (Primary/Dark)
             const metricsHtml = `
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    ${createMetricCard('users', 'Subscribers (Followers)', userProfileData.subscribersCount, 'border-red-500', 'subscribers')}
-                    ${createMetricCard('user-plus', 'Subscribes (Users Followed)', userProfileData.subscribesCount, 'border-sky-500', 'subscribes')}
-                    ${createMetricCard('map-pin', 'Places Followed', userProfileData.placeFollowsCount, 'border-emerald-500', 'place-follows')}
+                    ${createMetricCard('users', 'Subscribers (Followers)', userProfileData.subscribersCount, 'border-accent', 'subscribers')}
+                    ${createMetricCard('user-plus', 'Subscribes (Users Followed)', userProfileData.subscribesCount, 'border-secondary', 'subscribes')}
+                    ${createMetricCard('map-pin', 'Places Followed', userProfileData.placeFollowsCount, 'border-primary', 'place-follows')}
                 </div>
             `;
-            // 4. Populate Profile Content
+
             profileContent.innerHTML = `
                 <div class="max-w-4xl mx-auto space-y-8">
-                    <div class="bg-white p-8 rounded-3xl shadow-2xl border-t-8 border-emerald-500 flex flex-col items-center sm:flex-row sm:justify-start sm:space-x-6">
+                    <div class="bg-white p-8 rounded-3xl shadow-2xl border-t-8 border-primary flex flex-col items-center sm:flex-row sm:justify-start sm:space-x-6">
                         <img
                             src="${userProfileData.profilePic}"
                             alt="${userProfileData.nickname} Profile Picture"
-                            class="w-24 h-24 rounded-full object-cover ring-4 ring-emerald-200 shadow-md mb-4 sm:mb-0"
+                            class="w-24 h-24 rounded-full object-cover ring-4 ring-light shadow-md mb-4 sm:mb-0"
                         />
                         <div>
-                            <h2 class="text-3xl font-extrabold text-gray-800">${userProfileData.nickname}</h2>
-                            <p class="text-gray-500 font-medium mt-1">Traveler ID: ${currentUserId}</p>
-                            <p class="text-sm text-gray-600 mt-2 flex items-center">
+                            <h2 class="text-3xl font-extrabold text-primary">${userProfileData.nickname}</h2>
+                            <p class="text-secondary font-medium mt-1">Traveler ID: ${currentUserId}</p>
+                            <p class="text-sm text-gray-500 mt-2 flex items-center">
                                 <i data-lucide="map-pin" class="w-4 h-4 mr-1"></i>
                                 Exploring the World
                             </p>
-                            <button class="mt-4 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-full hover:bg-emerald-700 transition duration-150 flex items-center space-x-1">
+                            <button class="mt-4 px-4 py-2 bg-secondary text-white text-sm font-medium rounded-full hover:bg-primary transition duration-150 flex items-center space-x-1">
                                 <i data-lucide="user-plus" class="w-4 h-4"></i>
                                 <span>Follow User</span>
                             </button>
@@ -594,10 +573,9 @@
                     </div>
 
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-
-                        <div class="bg-white p-6 rounded-2xl shadow-xl">
-                            <h3 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2 flex items-center">
-                                <i data-lucide="heart" class="w-5 h-5 mr-2 text-red-500 fill-red-500"></i>
+                        <div class="bg-white p-6 rounded-2xl shadow-xl border border-light">
+                            <h3 class="text-xl font-bold text-primary mb-4 border-b border-light pb-2 flex items-center">
+                                <i data-lucide="heart" class="w-5 h-5 mr-2 text-accent fill-accent"></i>
                                 Favorites (${favoritePlaces.length})
                             </h3>
                             <div class="max-h-96 overflow-y-auto pr-2">
@@ -605,9 +583,9 @@
                             </div>
                         </div>
 
-                        <div class="bg-white p-6 rounded-2xl shadow-xl">
-                            <h3 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2 flex items-center">
-                                <i data-lucide="history" class="w-5 h-5 mr-2 text-emerald-600"></i>
+                        <div class="bg-white p-6 rounded-2xl shadow-xl border border-light">
+                            <h3 class="text-xl font-bold text-primary mb-4 border-b border-light pb-2 flex items-center">
+                                <i data-lucide="history" class="w-5 h-5 mr-2 text-secondary"></i>
                                 Recent Reviews (${recentReviews.length})
                             </h3>
                             <div class="space-y-4">
@@ -619,12 +597,10 @@
             `;
             lucide.createIcons();
 
-            // Add click listeners to the metric cards
             document.querySelectorAll('#profile-view .metric-card').forEach(card => {
                 card.removeEventListener('click', () => showMockList(card.dataset.metricType));
                 card.addEventListener('click', () => showMockList(card.dataset.metricType));
             });
-            // Add click listeners to the location cards (Reviews and Favorites)
             document.querySelectorAll('#profile-view .location-card').forEach(card => {
                 card.removeEventListener('click', () => switchView('detail', card.dataset.id));
                 card.addEventListener('click', function() {
@@ -636,15 +612,14 @@
 
         const renderLocations = () => {
             if (!feedContainer) return;
-            // Filter out 'spot' (old 'gem') type if not searching specifically for it
             let filteredLocations = locations.filter(loc => {
                 if (currentFilter === 'all') return (loc.type === 'restaurant' || loc.type === 'cafe');
                 return (loc.type === currentFilter);
             });
-            // Allow search to find all types, even the hidden ones, but default filter is restaurant/cafe
+            
             if (currentSearchTerm) {
                 const term = currentSearchTerm.toLowerCase();
-                filteredLocations = locations.filter(loc => { // Search checks ALL locations
+                filteredLocations = locations.filter(loc => { 
                     return loc.title.toLowerCase().includes(term) ||
                            loc.description.toLowerCase().includes(term) ||
                            loc.type.toLowerCase().includes(term);
@@ -655,11 +630,9 @@
                  filteredLocations = locations.filter(loc => loc.type === 'restaurant' || loc.type === 'cafe');
             }
 
-
-            // 3. Sort (no change)
             if (currentSort === 'popular') {
                 filteredLocations.sort((a, b) => calculatePopularity(b) - calculatePopularity(a));
-            } else { // 'newest' (default)
+            } else { 
                 filteredLocations.sort((a, b) => {
                     const timeA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : a.createdAt;
                     const timeB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : b.createdAt;
@@ -672,7 +645,7 @@
 
             if (filteredLocations.length === 0) {
                  feedContainer.innerHTML = `
-                    <div class="p-8 text-center bg-white rounded-xl shadow-lg border-2 border-dashed border-gray-300 text-gray-500">
+                    <div class="p-8 text-center bg-white rounded-xl shadow-lg border-2 border-dashed border-light text-secondary">
                         <p class="text-lg font-semibold">No discoveries found matching your criteria.</p>
                         <p>Try broadening your search or filter settings.</p>
                     </div>
@@ -692,15 +665,14 @@
             });
         };
 
-        // --- Core Application Logic (Firebase/Mock) ---
-
+        // --- Core Application Logic ---
         const initFirebase = async () => {
             updateLoadingState(true);
             if (MOCK_MODE && !MOCK_USER_PROFILES[currentUserId]) {
                 MOCK_USER_PROFILES[currentUserId] = {
                     ...MOCK_USER_PROFILES.default,
                     nickname: 'TestExplorer',
-                    profilePic: 'https://placehold.co/100x100/059669/ffffff?text=YOU'
+                    profilePic: 'https://placehold.co/100x100/1D3557/ffffff?text=YOU'
                 };
             }
 
@@ -708,26 +680,24 @@
             userIdDisplay.textContent = `${userInfo.nickname} (${currentUserId})`;
 
             if (MOCK_MODE) {
-                console.log("Running in MOCK MODE: Firebase configuration is missing.");
-                modeIndicator.textContent = "MOCK MODE (Data not saved)";
-                modeIndicator.className = "text-xs font-medium px-2 py-1 rounded-lg bg-yellow-400 text-yellow-900";
-
+                console.log("Running in MOCK MODE.");
+                modeIndicator.textContent = "MOCK MODE";
+                modeIndicator.className = "text-xs font-medium px-2 py-1 rounded-lg bg-yellow-100 text-yellow-800 border border-yellow-300";
                 locations = MOCK_LOCATIONS.slice();
                 renderLocations();
                 updateLoadingState(false);
                 return;
             }
 
-            modeIndicator.textContent = "LIVE MODE (Data saved to Firestore)";
-            modeIndicator.className = "text-xs font-medium px-2 py-1 rounded-lg bg-emerald-400 text-emerald-900";
+            modeIndicator.textContent = "LIVE MODE";
+            modeIndicator.className = "text-xs font-medium px-2 py-1 rounded-lg bg-green-100 text-green-800 border border-green-300";
 
             try {
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
-
                 let authResolved = false;
-                const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+                onAuthStateChanged(auth, async (user) => {
                     if (user) {
                         currentUserId = user.uid;
                     } else if (!authResolved) {
@@ -739,36 +709,23 @@
                             currentUserId = auth.currentUser.uid || generateRandomId();
                         }
                     }
-
                     if (!authResolved) {
                         authResolved = true;
                         userIdDisplay.textContent = `User ID: ${currentUserId}`;
-                        setupDataListener();
+                        if (db) {
+                            const q = query(collection(db, PUBLIC_COLLECTION_PATH));
+                            onSnapshot(q, (snapshot) => {
+                                locations = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                                renderLocations();
+                            }, (error) => console.error("Fetch error:", error));
+                        }
                         updateLoadingState(false);
                     }
                 });
             } catch (error) {
-                console.error("Firebase initialization failed:", error);
-                showMessage('error-message', `Initialization error in LIVE MODE: ${error.message}. Check your Firebase config.`, true);
+                console.error("Firebase Init Error:", error);
                 updateLoadingState(false);
             }
-        };
-
-        const setupDataListener = () => {
-            if (MOCK_MODE || !db) return;
-            const locationCollectionRef = collection(db, PUBLIC_COLLECTION_PATH);
-            const q = query(locationCollectionRef);
-
-            onSnapshot(q, (snapshot) => {
-                locations = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                renderLocations();
-            }, (error) => {
-                console.error("Error fetching data:", error);
-                showMessage('error-message', `Failed to fetch locations: ${error.message}`, true);
-            });
         };
 
         const handleSubmission = async (e) => {
@@ -780,94 +737,49 @@
             const title = titleInput ? titleInput.value.trim() : '';
             const description = descriptionInput ? descriptionInput.value.trim() : '';
             const imageURL = imageURLInput ? imageURLInput.value.trim() : '';
-            // Only allow restaurant or cafe types
             const type = typeInput ? typeInput.value : 'restaurant';
 
-            if (!title || !description) {
-                showMessage('form-status', 'Title and description are required.', true);
-                return;
-            }
+            if (!title || !description) return;
 
             submitButton.disabled = true;
             submitButton.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 mr-2 animate-spin"></i> Sharing...`;
             lucide.createIcons();
             const newDiscovery = {
-                title: title,
-                description: description,
-                imageURL: imageURL,
-                type: type,
+                title, description, imageURL, type,
                 submittedBy: currentUserId,
                 createdAt: new Date().getTime(),
-                clicks: 0,
-                reviews: [],
+                clicks: 0, reviews: [],
             };
 
             if (MOCK_MODE) {
                 newDiscovery.id = `mock-${crypto.randomUUID()}`;
                 locations.unshift(newDiscovery);
-
-                showMessage('form-status', 'Discovery added to local memory (Mock Mode)!');
+                showMessage('form-status', 'Discovery added (Mock Mode)!');
                 renderLocations();
-            } else {
-                if (!db || !currentUserId) {
-                    showMessage('form-status', 'App not fully initialized. Please wait.', true);
-                    submitButton.disabled = false;
-                    return;
-                }
-
+            } else if (db) {
                 try {
-                    await addDoc(collection(db, PUBLIC_COLLECTION_PATH), {
-                        ...newDiscovery,
-                        createdAt: serverTimestamp(),
-                    });
-                    showMessage('form-status', 'Discovery submitted successfully!');
+                    await addDoc(collection(db, PUBLIC_COLLECTION_PATH), { ...newDiscovery, createdAt: serverTimestamp() });
+                    showMessage('form-status', 'Discovery submitted!');
                 } catch (error) {
-                    console.error("Error adding document: ", error);
-                    showMessage('form-status', `Error submitting: ${error.message}`, true);
+                    showMessage('form-status', `Error: ${error.message}`, true);
                 }
             }
 
             titleInput.value = '';
             descriptionInput.value = '';
             imageURLInput.value = '';
-            document.getElementById('type-restaurant').checked = true; // Default back to restaurant
-
             submitButton.disabled = false;
             submitButton.innerHTML = `<i data-lucide="send" class="w-5 h-5 mr-2"></i> Submit Discovery`;
             lucide.createIcons();
         };
 
-        // --- Event Listeners and Initial Load ---
+        // --- Listeners ---
+        if (formElement) formElement.addEventListener('submit', handleSubmission);
+        if (searchInput) searchInput.addEventListener('input', (e) => { currentSearchTerm = e.target.value.trim(); renderLocations(); });
+        if (backButton) backButton.addEventListener('click', () => switchView('list'));
+        if (profileButton) profileButton.addEventListener('click', () => switchView('profile'));
+        if (closeModalButton) closeModalButton.addEventListener('click', () => modal.classList.add('hidden'));
 
-        if (formElement) {
-            formElement.addEventListener('submit', handleSubmission);
-        }
-
-        if (searchInput) {
-            searchInput.addEventListener('input', (e) => {
-                currentSearchTerm = e.target.value.trim();
-                renderLocations();
-            });
-        }
-
-        if (backButton) {
-            backButton.addEventListener('click', () => switchView('list'));
-        }
-
-        if (profileButton) {
-            profileButton.addEventListener('click', () => {
-                switchView('profile');
-            });
-        }
-
-        if (closeModalButton) {
-            closeModalButton.addEventListener('click', () => {
-                modal.classList.add('hidden');
-            });
-        }
-
-
-        // Filter Buttons (Only Restaurant/Cafe remain)
         filterButtons.forEach(button => {
             button.addEventListener('click', () => {
                 currentFilter = button.dataset.filter;
@@ -876,7 +788,6 @@
             });
         });
 
-        // Sort Buttons (no change)
         sortButtons.forEach(button => {
             button.addEventListener('click', () => {
                 currentSort = button.dataset.sort;
@@ -886,108 +797,76 @@
         });
 
         const updateFilterAndSortButtons = (activeFilter, activeSort) => {
-             // Update Filter buttons
             filterButtons.forEach(btn => {
                 const filterType = btn.dataset.filter;
                 const isActive = filterType === activeFilter;
-
                 btn.className = `px-4 py-2 rounded-lg text-sm font-medium transition duration-150`;
-
                 if (isActive) {
-                    if (filterType === 'all') {
-                        btn.classList.add('bg-emerald-600', 'text-white', 'shadow-lg'); // Green Theme
-                    } else if (filterType === 'restaurant') {
-                        btn.classList.add('bg-orange-600', 'text-white', 'shadow-lg');
-                    } else if (filterType === 'cafe') {
-                        btn.classList.add('bg-yellow-600', 'text-white', 'shadow-lg');
-                    }
+                    // Apply palette colors (Secondary Blue) to Active Filter
+                    btn.classList.add('bg-secondary', 'text-white', 'shadow-lg'); 
                 } else {
-                    btn.classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+                    btn.classList.add('bg-gray-200', 'text-primary', 'hover:bg-light');
                 }
             });
-
-            // Update Sort buttons (no color change needed)
             sortButtons.forEach(btn => {
-                const sortType = btn.dataset.sort;
-                const isActive = sortType === activeSort;
-
+                const isActive = btn.dataset.sort === activeSort;
                 btn.className = `px-3 py-1 rounded-full text-xs font-medium transition duration-150 border-2`;
-
                 if (isActive) {
-                    btn.classList.add('bg-gray-700', 'text-white', 'border-gray-800');
+                    btn.classList.add('bg-primary', 'text-white', 'border-primary');
                 } else {
-                    btn.classList.add('bg-white', 'text-gray-600', 'border-gray-300', 'hover:bg-gray-100');
+                    btn.classList.add('bg-white', 'text-secondary', 'border-light', 'hover:bg-offwhite');
                 }
             });
         };
 
-
-        // Initial Load
         window.addEventListener('load', () => {
              initFirebase();
              updateFilterAndSortButtons(currentFilter, currentSort);
         });
-
     </script>
     <style>
-        /* Custom styles to handle radio button appearance */
         input[type="radio"].form-radio {
-            -webkit-appearance: none;
-            -moz-appearance: none;
-            appearance: none;
-            border-radius: 50%;
-            border: 2px solid theme('colors.gray.400');
-            width: 1rem;
-            height: 1rem;
-            transition: all 150ms ease-in-out;
-            cursor: pointer;
+            -webkit-appearance: none; appearance: none; border-radius: 50%;
+            border: 2px solid #A8DADC; width: 1rem; height: 1rem;
+            transition: all 150ms ease-in-out; cursor: pointer;
         }
         input[type="radio"].form-radio:checked {
-            border-color: theme('colors.transparent');
-            box-shadow: 0 0 0 3px white, 0 0 0 5px currentColor;
+            border-color: transparent; box-shadow: 0 0 0 3px white, 0 0 0 5px currentColor;
         }
-        input[type="radio"].text-orange-600:checked {
-            background-color: theme('colors.orange.600');
-        }
-        input[type="radio"].text-yellow-600:checked {
-            background-color: theme('colors.yellow.600');
-        }
-        /* Style for line clamping in cards */
+        input[type="radio"].text-orange-600:checked { background-color: #ea580c; }
+        input[type="radio"].text-yellow-600:checked { background-color: #ca8a04; }
         .line-clamp-2 {
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
         }
     </style>
 </head>
-<body class="bg-gray-50 font-sans">
+<body class="bg-offwhite font-sans">
 
 <div id="error-message" class="fixed top-0 left-0 right-0 p-3 text-center z-50"></div>
 
-<div id="loading-screen" class="flex justify-center items-center h-screen bg-gray-50">
-    <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-emerald-600"></i>
-    <p class="ml-3 text-lg font-medium text-gray-700">Connecting to MazzaMi...</p>
+<div id="loading-screen" class="flex justify-center items-center h-screen bg-offwhite">
+    <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-secondary"></i>
+    <p class="ml-3 text-lg font-medium text-primary">Connecting to MazzaMi...</p>
 </div>
 
 <div id="main-content" class="hidden">
-    <header class="bg-emerald-700 text-white shadow-lg p-4 sticky top-0 z-20">
+    <header class="bg-primary text-white shadow-lg p-4 sticky top-0 z-20">
         <div class="max-w-6xl mx-auto flex justify-between items-center">
             <h1 class="text-2xl font-extrabold flex items-center">
                 <i data-lucide="compass" class="w-6 h-6 mr-2"></i>
                 MazzaMi
             </h1>
             <div class="flex items-center space-x-4">
-                <button id="profile-button" class="flex items-center space-x-2 text-white hover:text-emerald-200 transition duration-150 p-2 rounded-full hover:bg-emerald-600">
+                <button id="profile-button" class="flex items-center space-x-2 text-white hover:text-light transition duration-150 p-2 rounded-full hover:bg-secondary">
                     <img
                             src="https://placehold.co/32x32/059669/ffffff?text=ME"
-                            onerror="this.onerror=null;this.src='https://placehold.co/32x32/059669/ffffff?text=ME'"
+                            onerror="this.onerror=null;this.src='https://placehold.co/32x32/A8DADC/1D3557?text=ME'"
                             alt="Profile"
                             class="w-8 h-8 rounded-full object-cover ring-2 ring-white"
                     />
                 </button>
                 <div class="flex flex-col items-end text-right">
-                    <div id="mode-indicator" class="text-xs text-emerald-200 flex items-center mt-1">
+                    <div id="mode-indicator" class="text-xs text-light flex items-center mt-1">
                         <span class="font-semibold" id="user-id-display">Loading...</span>
                     </div>
                     <div id="mode-indicator2" class="text-xs font-medium px-2 py-1 rounded-lg"></div>
@@ -998,120 +877,69 @@
 
     <main class="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
 
-        <button id="back-to-list" class="hidden mb-6 flex items-center space-x-2 text-emerald-600 hover:text-emerald-800 font-medium transition duration-150">
+        <button id="back-to-list" class="hidden mb-6 flex items-center space-x-2 text-secondary hover:text-primary font-medium transition duration-150">
             <i data-lucide="arrow-left" class="w-5 h-5"></i>
             <span>Back to Discoveries</span>
         </button>
 
 
         <div id="list-view" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-            <section class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-2xl h-fit sticky lg:top-24 z-10">
-                <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">
+            <section class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-xl h-fit sticky lg:top-24 z-10 border border-light">
+                <h2 class="text-2xl font-bold text-primary mb-4 border-b border-light pb-2">
                     Share Your Discovery
                 </h2>
-                <p class="text-sm text-gray-500 mb-4">
+                <p class="text-sm text-secondary mb-4">
                     Help fellow travelers find authentic experiences. Share a Restaurant or Cafe!
                 </p>
 
                 <form id="discovery-form" class="space-y-4">
                     <div>
-                        <label for="title" class="block text-sm font-medium text-gray-700">
-                            Title of Discovery
-                        </label>
-                        <input
-                                type="text"
-                                name="title"
-                                id="title"
-                                placeholder="E.g., The Cozy Corner Coffee"
-                                required
-                                class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-3 focus:border-emerald-500 focus:ring-emerald-500"
-                        />
+                        <label for="title" class="block text-sm font-medium text-primary">Title of Discovery</label>
+                        <input type="text" name="title" id="title" placeholder="E.g., The Cozy Corner Coffee" required
+                                class="mt-1 block w-full rounded-lg border-light shadow-sm p-3 focus:border-secondary focus:ring-secondary" />
                     </div>
-
                     <div>
-                        <label for="imageURL" class="block text-sm font-medium text-gray-700">
-                            Photo URL (Optional)
-                        </label>
-                        <input
-                                type="url"
-                                name="imageURL"
-                                id="imageURL"
-                                placeholder="Paste image link here (e.g., https://example.com/photo.jpg)"
-                                class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-3 focus:border-emerald-500 focus:ring-emerald-500"
-                        />
+                        <label for="imageURL" class="block text-sm font-medium text-primary">Photo URL (Optional)</label>
+                        <input type="url" name="imageURL" id="imageURL" placeholder="Paste image link here"
+                                class="mt-1 block w-full rounded-lg border-light shadow-sm p-3 focus:border-secondary focus:ring-secondary" />
                     </div>
-
                     <div>
-                        <label for="description" class="block text-sm font-medium text-gray-700">
-                            What makes this place special? (Include Coordinates: Lat, Lon)
-                        </label>
-                        <textarea
-                                name="description"
-                                id="description"
-                                placeholder="It's a tiny, family-run stall that serves the best noodles. Coordinates: 12.345, -67.890"
-                                required
-                                rows="3"
-                                class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-3 focus:border-emerald-500 focus:ring-emerald-500"
-                        ></textarea>
+                        <label for="description" class="block text-sm font-medium text-primary">What makes this place special? (Include Coordinates)</label>
+                        <textarea name="description" id="description" placeholder="Description... Coordinates: 12.345, -67.890" required rows="3"
+                                class="mt-1 block w-full rounded-lg border-light shadow-sm p-3 focus:border-secondary focus:ring-secondary"></textarea>
                     </div>
-
                     <div class="flex flex-wrap gap-4">
-                        <label class="flex items-center text-sm font-medium text-gray-700 space-x-2">
-                            <input
-                                    type="radio"
-                                    name="type"
-                                    id="type-restaurant"
-                                    value="restaurant"
-                                    checked
-                                    class="form-radio h-4 w-4 text-orange-600 focus:ring-orange-500"
-                            />
+                        <label class="flex items-center text-sm font-medium text-primary space-x-2">
+                            <input type="radio" name="type" id="type-restaurant" value="restaurant" checked class="form-radio h-4 w-4 text-orange-600 focus:ring-orange-500" />
                             <i data-lucide="chef-hat" class="w-4 h-4 text-orange-600"></i>
                             <span>Restaurant</span>
                         </label>
-                        <label class="flex items-center text-sm font-medium text-gray-700 space-x-2">
-                            <input
-                                    type="radio"
-                                    name="type"
-                                    value="cafe"
-                                    class="form-radio h-4 w-4 text-yellow-600 focus:ring-yellow-500"
-                            />
+                        <label class="flex items-center text-sm font-medium text-primary space-x-2">
+                            <input type="radio" name="type" value="cafe" class="form-radio h-4 w-4 text-yellow-600 focus:ring-yellow-500" />
                             <i data-lucide="coffee" class="w-4 h-4 text-yellow-600"></i>
-                            <span>Cafe / Coffee Shop</span>
+                            <span>Cafe</span>
                         </label>
                     </div>
-
                     <div id="form-status" class="text-center"></div>
-
-                    <button
-                            type="submit"
-                            id="submit-button"
-                            class="w-full inline-flex justify-center items-center px-4 py-3 border border-transparent text-base font-medium rounded-xl shadow-lg text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition duration-150 ease-in-out disabled:bg-emerald-400"
-                    >
+                    <button type="submit" id="submit-button" class="w-full inline-flex justify-center items-center px-4 py-3 border border-transparent text-base font-medium rounded-xl shadow-lg text-white bg-secondary hover:bg-primary focus:outline-none transition duration-150 ease-in-out">
                         <i data-lucide="send" class="w-5 h-5 mr-2"></i>
                         Submit Discovery
                     </button>
                 </form>
             </section>
 
-
             <section class="lg:col-span-2">
                 <div id="list-controls" class="space-y-4 mb-6">
                     <div class="relative">
-                        <i data-lucide="search" class="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                        <input
-                                type="text"
-                                id="search-input"
-                                placeholder="Search by title, description, or type (e.g., 'cafe')..."
-                                class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl shadow-md focus:ring-emerald-500 focus:border-emerald-500"
-                        />
+                        <i data-lucide="search" class="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-light"></i>
+                        <input type="text" id="search-input" placeholder="Search by title, description, or type..."
+                                class="w-full pl-10 pr-4 py-3 border border-light rounded-xl shadow-sm focus:ring-secondary focus:border-secondary" />
                     </div>
 
-                    <div class="flex flex-col sm:flex-row justify-between items-center p-4 bg-white rounded-xl shadow-md">
-                        <h2 id="result-count" class="text-xl font-bold text-gray-800 mb-3 sm:mb-0">
+                    <div class="flex flex-col sm:flex-row justify-between items-center p-4 bg-white rounded-xl shadow-md border border-light">
+                        <h2 id="result-count" class="text-xl font-bold text-primary mb-3 sm:mb-0">
                             Community Feed (0 results)
                         </h2>
-
                         <div class="flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-4">
                             <div class="flex space-x-2">
                                 <button data-filter="all" class="px-4 py-2 rounded-lg text-sm font-medium transition duration-150">All</button>
@@ -1122,9 +950,8 @@
                                     <i data-lucide="coffee" class="w-4 h-4 inline mr-1"></i> Cafe
                                 </button>
                             </div>
-
                             <div class="flex items-center space-x-2 text-sm">
-                                <span class="text-gray-600 font-medium">Sort By:</span>
+                                <span class="text-secondary font-medium">Sort By:</span>
                                 <button data-sort="newest" class="px-3 py-1 rounded-full text-xs font-medium transition duration-150 border-2">Newest</button>
                                 <button data-sort="popular" class="px-3 py-1 rounded-full text-xs font-medium transition duration-150 border-2">Popularity</button>
                             </div>
@@ -1138,25 +965,22 @@
         </div>
 
         <div id="detail-view" class="hidden">
-            <div id="detail-content" class="max-w-4xl mx-auto">
-                </div>
+            <div id="detail-content" class="max-w-4xl mx-auto"></div>
         </div>
 
         <div id="profile-view" class="hidden">
-            <div id="profile-content">
-                </div>
+            <div id="profile-content"></div>
         </div>
 
     </main>
 </div>
 
-<div id="metric-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 relative">
-        <button id="close-modal" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+<div id="metric-modal" class="hidden fixed inset-0 bg-primary bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 relative border border-light">
+        <button id="close-modal" class="absolute top-4 right-4 text-secondary hover:text-primary">
             <i data-lucide="x" class="w-6 h-6"></i>
         </button>
-        <div id="modal-content">
-            </div>
+        <div id="modal-content"></div>
     </div>
 </div>
 
